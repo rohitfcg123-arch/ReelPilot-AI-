@@ -88,7 +88,8 @@ async def call_groq_for_reel(system_instruction: str, user_prompt: str) -> tuple
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0.45,
-        "max_completion_tokens": 1400,
+        "max_completion_tokens": 2400,
+        "reasoning_effort": "low",
         "response_format": {"type": "json_object"},
     }
     retryable_statuses = {500, 502, 503, 504}
@@ -123,15 +124,41 @@ async def call_groq_for_reel(system_instruction: str, user_prompt: str) -> tuple
                 )
             try:
                 data = response.json()
-                text = data["choices"][0]["message"]["content"]
+                choice = data["choices"][0]
+                message = choice["message"]
+                content = message.get("content")
+                if isinstance(content, list):
+                    content = "".join(
+                        part.get("text", "") for part in content
+                        if isinstance(part, dict)
+                    )
+                if not isinstance(content, str) or not content.strip():
+                    finish_reason = str(choice.get("finish_reason", "unknown"))
+                    raise ValueError(f"Empty model content (finish_reason={finish_reason}).")
+
                 import json
-                generated = json.loads(text)
+                cleaned = content.strip()
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+                try:
+                    generated = json.loads(cleaned)
+                except json.JSONDecodeError:
+                    start, end = cleaned.find("{"), cleaned.rfind("}")
+                    if start < 0 or end <= start:
+                        raise
+                    generated = json.loads(cleaned[start:end + 1])
+
+                if not isinstance(generated, dict):
+                    raise ValueError("Model output was not a JSON object.")
+                if isinstance(generated.get("hashtags"), list):
+                    generated["hashtags"] = " ".join(str(tag) for tag in generated["hashtags"])
                 for field in ("hook", "explanation", "cta", "caption", "hashtags"):
-                    if not isinstance(generated.get(field), str) or not generated[field].strip():
+                    value = generated.get(field)
+                    if not isinstance(value, str) or not value.strip():
                         raise ValueError(f"Missing or invalid {field}.")
                 return generated, GROQ_MODEL
             except (KeyError, IndexError, TypeError, ValueError) as exc:
-                raise RuntimeError("Groq returned an unreadable Reel draft.") from exc
+                raise RuntimeError(f"Groq returned an unusable Reel draft ({type(exc).__name__}).") from exc
 
     raise RuntimeError("Groq request failed. Gemini fallback will be attempted.")
 
