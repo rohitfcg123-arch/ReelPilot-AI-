@@ -161,7 +161,7 @@ function ReelStudio({ onSave }) {
       return;
     }
 
-    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\\/$/, "");
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
     if (!apiBase) {
       setError("AI backend is not connected yet. The backend must be deployed and VITE_API_BASE_URL configured first.");
       return;
@@ -180,7 +180,7 @@ function ReelStudio({ onSave }) {
         throw new Error(data.detail || "Could not generate the script. Please try again.");
       }
       setScript(data.script || "");
-      setCaption([data.caption, data.hashtags].filter(Boolean).join("\\n\\n"));
+      setCaption([data.caption, data.hashtags].filter(Boolean).join("\n\n"));
     } catch (err) {
       setError(err.message || "Could not connect to the AI backend.");
     } finally {
