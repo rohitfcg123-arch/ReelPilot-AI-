@@ -154,23 +154,43 @@ function ReelStudio({ onSave }) {
   const [error, setError] = useState("");
 
   const generateDraft = () => {
-    const cleanTopic = topic.trim();
+    const cleanTopic = topic.trim().replace(/[\\s"'”’]+$/g, "").replace(/^[\\s"'“‘]+/g, "");
     if (cleanTopic.length < 4) {
       setError("Please enter a topic with at least 4 characters.");
       return;
     }
     setError("");
-    const opening = format === "Myth vs fact"
-      ? `Kya aapko lagta hai ki ${cleanTopic} ke baare mein jo popular baat kahi jaati hai, woh hamesha sahi hoti hai? Zaroori nahi.`
-      : format === "Explainer"
-      ? `Aaj simple language mein samajhte hain: ${cleanTopic}.`
-      : `Agar aap ${cleanTopic} ko lekar confused hain, ye 3 baatein samajh lijiye.`;
-    const body = duration === "60 seconds"
-      ? `\n\nPoint 1: Is topic ka basic meaning samjhein.\nPoint 2: Iska practical impact apni situation par check karein.\nPoint 3: Kisi bhi decision se pehle applicable rules, dates aur official source verify karein.\n\nExample: Ek real-life example lekar calculation ya process ko step-by-step samjhein.`
-      : `\n\nPehli baat: iska basic meaning samjhein.\nDoosri baat: apni situation par iska impact check karein.\nTeesri baat: decision lene se pehle current rules aur official source verify karein.`;
-    const ending = "\n\nSave this Reel for revision, aur aise finance explainers ke liye follow karein.";
-    setScript(`[HOOK]\n${opening}\n\n[EXPLANATION]${body}\n\n[CTA]${ending}`);
-    setCaption(`${cleanTopic}: simple explanation in Hinglish. Rules and applicability can change, so verify the latest official guidance before acting.\n\n#FinanceEducation #India #TaxAwareness #Accounting #PersonalFinance`);
+
+    const isMinimumDue = /credit\\s*card/i.test(cleanTopic) && /minimum\\s*due/i.test(cleanTopic);
+    let opening;
+    let body;
+
+    if (isMinimumDue) {
+      opening = format === "Myth vs fact"
+        ? "Credit card ka sirf Minimum Due bhar diya, toh kya aapka poora bill clear ho gaya? Nahi."
+        : format === "3 quick points"
+        ? "Credit card ka Minimum Due bharte waqt ye 3 baatein yaad rakho."
+        : "Credit card bill mein Minimum Due bharna easy lagta hai, lekin iska matlab bill khatam hona nahi hai.";
+      body = duration === "60 seconds"
+        ? "\\n\\n1. Minimum Due, total outstanding amount ka sirf ek hissa hota hai.\\n2. Due date tak Minimum Due pay karne se late-payment consequences se bachne mein madad mil sakti hai, lekin baaki balance unpaid rehta hai.\\n3. Bache hue balance par card issuer ke terms ke mutabik finance charges/interest lag sakta hai. Interest-free period bhi affect ho sakta hai.\\n\\nExample: Agar total bill ₹10,000 hai aur aap sirf ₹500 Minimum Due pay karte hain, toh baaki ₹9,500 automatically maaf nahi hota. Exact charges apne card statement aur issuer ke MITC mein check karein."
+        : "\\n\\nMinimum Due total bill ka sirf ek chhota hissa hota hai.\\nAap ise pay kar do, tab bhi baaki outstanding amount clear nahi hota.\\nBache hue balance par card ke terms ke hisaab se interest/finance charges lag sakte hain.\\nIsliye possible ho toh total bill due date tak pay karo.";
+    } else {
+      opening = format === "Myth vs fact"
+        ? `Kya aapko lagta hai ki ${cleanTopic} ke baare mein jo popular baat kahi jaati hai, woh hamesha sahi hoti hai? Zaroori nahi.`
+        : format === "Explainer"
+        ? `Aaj simple language mein samajhte hain: ${cleanTopic}.`
+        : `Agar aap ${cleanTopic} ko lekar confused hain, ye 3 baatein samajh lijiye.`;
+      body = duration === "60 seconds"
+        ? `\\n\\nPoint 1: ${cleanTopic} ka basic concept aur meaning samjhein.\\nPoint 2: Iska practical impact ek simple real-life example se dekhein.\\nPoint 3: Apni situation par apply karne se pehle current rules, dates aur official source verify karein.`
+        : `\\n\\nPehli baat: ${cleanTopic} ka basic concept samjhein.\\nDoosri baat: iska practical impact apni situation par check karein.\\nTeesri baat: action lene se pehle latest official guidance verify karein.`;
+    }
+
+    const ending = "\\n\\nSave this Reel, aur aise practical finance explainers ke liye follow karein.";
+    setScript(`[HOOK]\\n${opening}\\n\\n[EXPLANATION]${body}\\n\\n[CTA]${ending}`);
+    const captionText = isMinimumDue
+      ? "Minimum Due pay karna full credit card bill clear karne ke barabar nahi hai. Remaining balance par charges lag sakte hain—apne issuer ke latest terms aur statement check karein."
+      : `${cleanTopic}: simple Hinglish explainer. Verify current rules and official guidance before acting.`;
+    setCaption(`${captionText}\\n\\n#CreditCard #PersonalFinance #FinanceEducation #MoneyTips #India`);
   };
 
   return (
