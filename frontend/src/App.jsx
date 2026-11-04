@@ -162,10 +162,20 @@ function ReelStudio({ onSave }) {
     setError("");
 
     const isMinimumDue = /credit\s*card/i.test(cleanTopic) && /minimum\s*due/i.test(cleanTopic);
+    const isCibil = /cibil|credit\s*score/i.test(cleanTopic);
     let opening;
     let body;
 
-    if (isMinimumDue) {
+    if (isCibil) {
+      opening = format === "Myth vs fact"
+        ? "CIBIL score 750 se kam hai, toh kya loan pakka reject hoga? Nahi, approval guaranteed nahi hota—but rejection bhi automatic nahi hai."
+        : format === "3 quick points"
+        ? "CIBIL score 750 se kam hai? Loan apply karne se pehle ye 3 baatein samjho."
+        : "CIBIL score 750 se kam hone par loan milna mushkil ho sakta hai, lekin sirf score se final decision nahi hota.";
+      body = duration === "60 seconds"
+        ? "\n\n1. Lenders credit score ke saath income, existing EMIs, repayment history aur job/business stability bhi dekhte hain.\n2. Lower score par lender loan reject kar sakta hai, lower amount offer kar sakta hai, ya higher interest rate de sakta hai. Ye lender ki policy par depend karta hai.\n3. Credit report mein errors check karo, EMIs aur card bills time par pay karo, aur multiple loan applications ek saath mat daalo.\n\nYaad rakho: 750 koi universal approval guarantee ya fixed RBI rule nahi hai. Har lender ka assessment alag ho sakta hai."
+        : "\n\nBank sirf CIBIL score nahi dekhta—income, existing EMI aur repayment history bhi check karta hai.\nLow score par loan reject ho sakta hai, amount kam mil sakta hai ya interest rate zyada ho sakta hai.\nCredit report ki mistakes check karo aur payments time par karo.\n750 koi guaranteed approval rule nahi hai; lender ki policy matter karti hai.";
+    } else if (isMinimumDue) {
       opening = format === "Myth vs fact"
         ? "Credit card ka sirf Minimum Due bhar diya, toh kya aapka poora bill clear ho gaya? Nahi."
         : format === "3 quick points"
@@ -187,10 +197,17 @@ function ReelStudio({ onSave }) {
 
     const ending = "\n\nSave this Reel, aur aise practical finance explainers ke liye follow karein.";
     setScript(`[HOOK]\n${opening}\n\n[EXPLANATION]${body}\n\n[CTA]${ending}`);
-    const captionText = isMinimumDue
+    const captionText = isCibil
+      ? "A lower credit score can affect loan eligibility and terms, but lenders also assess income, existing debt and repayment history. Check your credit report and lender criteria."
+      : isMinimumDue
       ? "Minimum Due pay karna full credit card bill clear karne ke barabar nahi hai. Remaining balance par charges lag sakte hain—apne issuer ke latest terms aur statement check karein."
       : `${cleanTopic}: simple Hinglish explainer. Verify current rules and official guidance before acting.`;
-    setCaption(`${captionText}\n\n#CreditCard #PersonalFinance #FinanceEducation #MoneyTips #India`);
+    const hashtags = isCibil
+      ? "#CIBILScore #CreditScore #LoanTips #PersonalFinance #FinanceEducation"
+      : isMinimumDue
+      ? "#CreditCard #PersonalFinance #FinanceEducation #MoneyTips #India"
+      : "#FinanceEducation #PersonalFinance #MoneyTips #India #LearnFinance";
+    setCaption(`${captionText}\n\n${hashtags}`);
   };
 
   return (
