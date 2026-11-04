@@ -151,6 +151,8 @@ function ReelStudio({ onSave }) {
   const [duration, setDuration] = useState("30 seconds");
   const [script, setScript] = useState("");
   const [caption, setCaption] = useState("");
+  const [provider, setProvider] = useState("");
+  const [model, setModel] = useState("");
   const [error, setError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCheckingFacts, setIsCheckingFacts] = useState(false);
@@ -200,6 +202,7 @@ function ReelStudio({ onSave }) {
 
     setError("");
     setIsGenerating(true);
+    setFactCheck(null);
     try {
       const response = await fetch(`${apiBase}/api/generate-reel`, {
         method: "POST",
@@ -212,6 +215,8 @@ function ReelStudio({ onSave }) {
       }
       setScript(data.script || "");
       setCaption([data.caption, data.hashtags].filter(Boolean).join("\n\n"));
+      setProvider(data.provider || "AI provider");
+      setModel(data.model || "");
     } catch (err) {
       setError(err.message || "Could not connect to the AI backend.");
     } finally {
@@ -243,11 +248,11 @@ function ReelStudio({ onSave }) {
           </div>
         </div>
         {error && <p className="studio-error">{error}</p>}
-        <button className="primary-btn studio-generate" onClick={generateDraft} disabled={isGenerating}><Sparkles size={17}/> {isGenerating ? "Generating with Gemini..." : "Generate AI script"}</button>
+        <button className="primary-btn studio-generate" onClick={generateDraft} disabled={isGenerating}><Sparkles size={17}/> {isGenerating ? "Generating with AI..." : "Generate AI script"}</button>
         <p className="studio-disclaimer">AI-generated drafts are not tax- or fact-verified. Verify every legal, tax and financial claim against current official sources before publishing.</p>
       </div>
       <div className="panel studio-output">
-        <div className="panel-heading"><div><h2><FileText size={18}/> Script preview</h2><p>Hook · Explanation · Call to action</p></div></div>
+        <div className="panel-heading"><div><h2><FileText size={18}/> Script preview</h2><p>Hook · Explanation · Call to action</p></div>{provider && <span className="progress-count">{provider}{model ? ` · ${model}` : ""}</span>}</div>
         {script ? (
           <>
             <pre className="script-preview">{script}</pre>
