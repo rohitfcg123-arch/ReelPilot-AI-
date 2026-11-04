@@ -179,9 +179,9 @@ async def generate_reel(request: ReelRequest) -> ReelResponse:
         '"hook", "explanation", "cta", "caption", and "hashtags".'
     )
     user_prompt = (
-        f"Topic: {request.topic}\\n"
-        f"Format: {request.format}\\n"
-        f"Target duration: {request.duration}\\n\\n"
+        f"Topic: {request.topic}\n"
+        f"Format: {request.format}\n"
+        f"Target duration: {request.duration}\n\n"
         "Write a natural spoken Hinglish script. Keep the hook specific, explain "
         "the concept with a practical example where appropriate, and finish with "
         "a concise CTA. Match the requested duration. Caption can be Hinglish. "
@@ -274,7 +274,7 @@ async def generate_reel(request: ReelRequest) -> ReelResponse:
     cta = generated["cta"].strip()
     caption = generated["caption"].strip()
     hashtags = generated["hashtags"].strip()
-    script = f"[HOOK]\\n{hook}\\n\\n[EXPLANATION]\\n{explanation}\\n\\n[CTA]\\n{cta}"
+    script = f"[HOOK]\n{hook}\n\n[EXPLANATION]\n{explanation}\n\n[CTA]\n{cta}"
     return ReelResponse(
         script=script,
         caption=caption,
