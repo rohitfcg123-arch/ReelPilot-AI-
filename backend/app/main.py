@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import os
 from typing import Literal
 
@@ -311,6 +312,75 @@ async def generate_reel(request: ReelRequest) -> ReelResponse:
         verified=False,
     )
 
+
+
+class VoiceoverRequest(BaseModel):
+    text: str = Field(min_length=10, max_length=2500)
+    language_code: Literal["hi-IN", "en-IN", "bn-IN"] = "hi-IN"
+    speaker: Literal["shubh", "aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "manan"] = "shubh"
+
+
+class VoiceoverResponse(BaseModel):
+    audio_base64: str
+    mime_type: str = "audio/mpeg"
+    provider: str = "Sarvam AI"
+    model: str = "bulbul:v3"
+
+
+@app.post("/api/generate-voiceover", response_model=VoiceoverResponse)
+async def generate_voiceover(request: VoiceoverRequest) -> VoiceoverResponse:
+    """Generate Hindi/Hinglish voiceover with Sarvam; API key stays server-side."""
+    sarvam_api_key = os.getenv("SARVAM_API_KEY", "").strip()
+    if not sarvam_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Sarvam voiceover is not configured. Add SARVAM_API_KEY in Render Environment.",
+        )
+
+    payload = {
+        "text": request.text,
+        "target_language_code": request.language_code,
+        "speaker": request.speaker,
+        "model": "bulbul:v3",
+        "pace": 1.0,
+        "speech_sample_rate": 24000,
+        "output_audio_codec": "mp3",
+        "temperature": 0.6,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            response = await client.post(
+                "https://api.sarvam.ai/text-to-speech",
+                headers={
+                    "api-subscription-key": sarvam_api_key,
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="Sarvam voice generation timed out. Please retry.") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Could not reach Sarvam voice service.") from exc
+
+    if response.is_error:
+        try:
+            detail = response.json().get("error", {}).get("message", "")
+        except (ValueError, AttributeError):
+            detail = ""
+        safe_detail = str(detail).replace("\\n", " ").strip()[:180]
+        raise HTTPException(
+            status_code=502 if response.status_code >= 500 else response.status_code,
+            detail=f"Sarvam voice generation failed (HTTP {response.status_code}). {safe_detail}".strip(),
+        )
+
+    try:
+        data = response.json()
+        audio_base64 = data["audios"][0]
+        # Validate provider output before returning it to the browser.
+        base64.b64decode(audio_base64, validate=True)
+        return VoiceoverResponse(audio_base64=audio_base64)
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Sarvam returned an unreadable audio response.") from exc
 
 
 class FactCheckRequest(BaseModel):
