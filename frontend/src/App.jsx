@@ -377,7 +377,7 @@ function ReelStudio({ onSave }) {
                   </button>
                   {videoUrl && (
                     <div className="rendered-video">
-                      <strong>Reel preview · 1080 × 1920 MP4</strong>
+                      <strong>Reel preview · 720 × 1280 MP4</strong>
                       <video controls playsInline src={videoUrl}>Your browser does not support video playback.</video>
                       <a className="secondary-btn" href={videoUrl} download="reelpilot-instagram-reel.mp4">Download MP4 Reel</a>
                     </div>
