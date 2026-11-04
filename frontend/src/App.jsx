@@ -26,6 +26,7 @@ export default function App() {
   const [active, setActive] = useState("Overview");
   const [menuOpen, setMenuOpen] = useState(false);
   const [posts, setPosts] = useState(initialPosts);
+  const [publishMode, setPublishMode] = useState("manual");
 
   const saveReelDraft = (title) => {
     setPosts((items) => [
@@ -93,6 +94,10 @@ export default function App() {
 
           {active === "Reel studio" ? (
             <ReelStudio onSave={saveReelDraft} />
+          ) : active === "Settings" ? (
+            <PublishingSettings publishMode={publishMode} setPublishMode={setPublishMode} />
+          ) : active === "Publishing" ? (
+            <PublishingPage publishMode={publishMode} />
           ) : (
             <>
           <section className="stats-grid">
@@ -301,6 +306,49 @@ function ReelStudio({ onSave }) {
           <div className="studio-empty"><div className="engine-icon"><Film size={20}/></div><strong>Your script will appear here</strong><p>Enter a topic and create a draft to preview its structure.</p></div>
         )}
       </div>
+    </section>
+  );
+}
+
+
+function PublishingSettings({ publishMode, setPublishMode }) {
+  return (
+    <section className="panel mode-settings">
+      <div className="panel-heading">
+        <div><h2><Settings size={18}/> Publishing mode</h2><p>Choose how AI-created content should move toward Instagram.</p></div>
+        <span className="progress-count">CONFIGURATION</span>
+      </div>
+      <div className="mode-options">
+        <button className={`mode-option ${publishMode === "manual" ? "selected" : ""}`} onClick={() => setPublishMode("manual")}>
+          <span className="mode-radio">{publishMode === "manual" ? "✓" : ""}</span>
+          <span><strong>Manual approval</strong><small>AI creates the Reel and checks available sources. You review the preview and approve each post before it can be published.</small></span>
+          <span className="mode-tag">Recommended</span>
+        </button>
+        <button className={`mode-option ${publishMode === "automatic" ? "selected" : ""}`} onClick={() => setPublishMode("automatic")}>
+          <span className="mode-radio">{publishMode === "automatic" ? "✓" : ""}</span>
+          <span><strong>Automatic publishing</strong><small>AI prepares content and sends eligible posts to the configured publishing schedule without per-post approval.</small></span>
+          <span className="mode-tag">Opt-in</span>
+        </button>
+      </div>
+      <div className="mode-warning"><ShieldCheck size={17}/><p><strong>{publishMode === "manual" ? "Manual mode selected" : "Automatic mode selected — not activated"}</strong><br/>This is currently a saved-in-session preference only. Instagram publishing is not connected yet. Before auto-publishing can work, ReelPilot still needs video/voice generation, Meta account authorization, publishing permissions, schedule handling and a live backend queue. Finance and tax claims must pass verification rules; uncertain claims should be held for review, never silently auto-published.</p></div>
+    </section>
+  );
+}
+
+function PublishingPage({ publishMode }) {
+  return (
+    <section className="panel mode-settings">
+      <div className="panel-heading">
+        <div><h2><Instagram size={18}/> Publishing workflow</h2><p>Current publishing preference and activation requirements.</p></div>
+        <span className="progress-count">{publishMode === "manual" ? "MANUAL" : "AUTO"}</span>
+      </div>
+      <div className="workflow-steps">
+        <div><span>01</span><strong>AI research and script</strong><small>Groq primary, Gemini backup where configured.</small></div>
+        <div><span>02</span><strong>Fact-check and source review</strong><small>AI-assisted checks are not a guarantee; uncertain claims require human review.</small></div>
+        <div><span>03</span><strong>{publishMode === "manual" ? "Your approval" : "Automatic eligibility checks"}</strong><small>{publishMode === "manual" ? "You approve each finished Reel before publishing." : "Eligible posts can proceed without per-post approval after integrations are activated."}</small></div>
+        <div><span>04</span><strong>Instagram publishing</strong><small>Pending Meta connection and official API implementation.</small></div>
+      </div>
+      <div className="mode-warning"><ShieldCheck size={17}/><p><strong>Publishing is not active yet.</strong><br/>Selecting a mode does not publish anything. ReelPilot currently generates script drafts; finished video rendering, AI voiceover and Instagram API publishing still need to be built and connected.</p></div>
     </section>
   );
 }
