@@ -92,3 +92,33 @@ footer{text-align:center;color:#646e7e;font-size:9px;padding:23px 0 4px}footer s
 .script-preview{white-space:pre-wrap;overflow-wrap:anywhere;background:#111620;border:1px solid #303747;border-radius:9px;padding:14px;color:#e6e2f3;font:12px/1.7 'DM Sans',sans-serif;margin:0}
 .studio-output .secondary-btn{margin-top:12px}
 @media(max-width:800px){.studio-layout{grid-template-columns:1fr}}
+
+
+.fact-check-actions{margin-top:13px;padding:12px;border:1px solid #3a3650;background:#211e30;border-radius:9px}
+.fact-check-btn{display:flex;align-items:center;gap:8px}
+.fact-check-btn:disabled{opacity:.65;cursor:wait}
+.fact-check-actions>p{font-size:10px;line-height:1.5;color:#a39bb7;margin:9px 0 0}
+.fact-report{margin-top:13px;padding:13px;border:1px solid #3b4050;background:#141a25;border-radius:10px}
+.fact-report-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.fact-report-heading strong,.fact-sources>strong{display:block;font-size:12px;color:#f1eff8}
+.fact-report-heading>div>span{display:block;color:#9ba4b5;font-size:10px;margin-top:4px}
+.review-required{font-size:9px;color:#f0cf8a;background:#40351f;border-radius:20px;padding:5px 8px;white-space:nowrap}
+.fact-summary{font-size:11px;line-height:1.6;color:#c0c6d2;margin:12px 0}
+.fact-counts{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}
+.fact-counts span,.claim-status{font-size:9px;border-radius:20px;padding:5px 7px}
+.supported{background:#1e3b34;color:#91d8b8}
+.contradicted{background:#472a31;color:#ffabb2}
+.unclear{background:#40351f;color:#f0cf8a}
+.fact-claim{padding:10px 0;border-top:1px solid #2b3240}
+.fact-claim>div{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.fact-claim strong{font-size:10px;line-height:1.5;color:#e3e6ed}
+.claim-status{flex-shrink:0;text-transform:capitalize}
+.claim-status.supported{background:#1e3b34;color:#91d8b8}
+.claim-status.contradicted{background:#472a31;color:#ffabb2}
+.claim-status.unclear{background:#40351f;color:#f0cf8a}
+.fact-claim p{font-size:10px;line-height:1.55;color:#9ba4b5;margin:6px 0 0}
+.fact-sources{border-top:1px solid #2b3240;padding-top:11px;margin-top:7px}
+.fact-sources a{display:block;color:#c6b6ff;font-size:10px;line-height:1.45;margin-top:9px;text-decoration:none;overflow-wrap:anywhere}
+.fact-sources a span{display:block;color:#8791a2;font-size:9px;margin-top:2px}
+.fact-sources>p{font-size:10px;color:#f0cf8a;line-height:1.5;margin:8px 0 0}
+.fact-report>small{display:block;color:#7f899a;font-size:9px;margin-top:12px}
