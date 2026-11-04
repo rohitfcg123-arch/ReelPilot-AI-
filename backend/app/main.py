@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 APP_ENV = os.getenv("APP_ENV", "development")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b").strip()
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
@@ -74,6 +76,66 @@ async def call_gemini_with_retry(url: str, payload: dict, timeout: float) -> htt
     return last_response
 
 
+async def call_groq_for_reel(system_instruction: str, user_prompt: str) -> tuple[dict, str]:
+    """Generate a Reel draft with Groq; raise a safe error to trigger Gemini fallback."""
+    if not GROQ_API_KEY:
+        raise RuntimeError("Groq API key is not configured.")
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.45,
+        "max_completion_tokens": 1400,
+        "response_format": {"type": "json_object"},
+    }
+    retryable_statuses = {500, 502, 503, 504}
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        for attempt in range(3):
+            try:
+                response = await client.post(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {GROQ_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+            except (httpx.TimeoutException, httpx.HTTPError) as exc:
+                if attempt == 2:
+                    raise RuntimeError("Groq could not be reached after 3 attempts.") from exc
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+
+            if response.status_code in retryable_statuses and attempt < 2:
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            if response.is_error:
+                try:
+                    message = response.json().get("error", {}).get("message", "")
+                except (ValueError, AttributeError):
+                    message = ""
+                safe_message = str(message).replace("\\n", " ").strip()[:180]
+                raise RuntimeError(
+                    f"Groq API error (HTTP {response.status_code}). {safe_message}".strip()
+                )
+            try:
+                data = response.json()
+                text = data["choices"][0]["message"]["content"]
+                import json
+                generated = json.loads(text)
+                for field in ("hook", "explanation", "cta", "caption", "hashtags"):
+                    if not isinstance(generated.get(field), str) or not generated[field].strip():
+                        raise ValueError(f"Missing or invalid {field}.")
+                return generated, GROQ_MODEL
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
+                raise RuntimeError("Groq returned an unreadable Reel draft.") from exc
+
+    raise RuntimeError("Groq request failed. Gemini fallback will be attempted.")
+
+
 class ReelRequest(BaseModel):
     topic: str = Field(min_length=4, max_length=240)
     format: Literal["Explainer", "Myth vs fact", "3 quick points"] = "Explainer"
@@ -85,6 +147,7 @@ class ReelResponse(BaseModel):
     caption: str
     hashtags: str
     model: str
+    provider: str
     verified: bool = False
 
 
@@ -104,12 +167,6 @@ async def root() -> dict[str, str]:
 
 @app.post("/api/generate-reel", response_model=ReelResponse)
 async def generate_reel(request: ReelRequest) -> ReelResponse:
-    if not GEMINI_API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="Gemini API is not configured on the backend yet.",
-        )
-
     system_instruction = (
         "You are ReelPilot AI, a careful Hindi-English (Hinglish) content writer "
         "for an Indian audience. Create clear, engaging, faceless Instagram Reel "
@@ -122,9 +179,9 @@ async def generate_reel(request: ReelRequest) -> ReelResponse:
         '"hook", "explanation", "cta", "caption", and "hashtags".'
     )
     user_prompt = (
-        f"Topic: {request.topic}\n"
-        f"Format: {request.format}\n"
-        f"Target duration: {request.duration}\n\n"
+        f"Topic: {request.topic}\\n"
+        f"Format: {request.format}\\n"
+        f"Target duration: {request.duration}\\n\\n"
         "Write a natural spoken Hinglish script. Keep the hook specific, explain "
         "the concept with a practical example where appropriate, and finish with "
         "a concise CTA. Match the requested duration. Caption can be Hinglish. "
@@ -132,71 +189,101 @@ async def generate_reel(request: ReelRequest) -> ReelResponse:
         "are required, clearly mark them for verification instead of guessing."
     )
 
-    payload = {
-        "systemInstruction": {"parts": [{"text": system_instruction}]},
-        "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-        "generationConfig": {
-            "temperature": 0.45,
-            "responseMimeType": "application/json",
-            "maxOutputTokens": 1400,
-        },
-    }
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/"
-        f"models/{GEMINI_MODEL}:generateContent"
-    )
+    generated = None
+    used_model = ""
+    used_provider = ""
 
-    response = await call_gemini_with_retry(url, payload, timeout=45.0)
-
-    if response.status_code == 429:
-        raise HTTPException(
-            status_code=429,
-            detail="Gemini free-tier rate limit reached. Wait and try again.",
-        )
-    if response.status_code in (401, 403):
-        raise HTTPException(
-            status_code=502,
-            detail="Gemini rejected the backend API key or project access.",
-        )
-    if response.is_error:
-        # Surface the upstream status and Google's safe error message so deployment
-        # issues can be diagnosed without exposing the API key.
+    if GROQ_API_KEY:
         try:
-            upstream_error = response.json().get("error", {}).get("message", "")
-        except (ValueError, AttributeError):
-            upstream_error = ""
-        safe_message = str(upstream_error).replace("\\n", " ").strip()[:240]
-        detail = f"Gemini API error (HTTP {response.status_code})."
-        if safe_message:
-            detail = f"{detail} {safe_message}"
-        raise HTTPException(status_code=502, detail=detail)
+            generated, used_model = await call_groq_for_reel(
+                system_instruction, user_prompt
+            )
+            used_provider = "Groq"
+        except RuntimeError as groq_error:
+            # Groq is primary. On quota, availability, auth, or output errors,
+            # attempt Gemini as the configured backup without exposing secrets.
+            if not GEMINI_API_KEY:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"{groq_error} Add GEMINI_API_KEY to enable the backup provider.",
+                ) from groq_error
+            groq_failure = str(groq_error)
+    else:
+        groq_failure = "GROQ_API_KEY is not configured."
 
-    try:
-        data = response.json()
-        parts = data["candidates"][0]["content"]["parts"]
-        raw_text = next(part["text"] for part in parts if "text" in part)
-        import json
+    if generated is None:
+        if not GEMINI_API_KEY:
+            raise HTTPException(
+                status_code=503,
+                detail="Neither provider is configured. Add GROQ_API_KEY; GEMINI_API_KEY is the backup.",
+            )
+        gemini_payload = {
+            "systemInstruction": {"parts": [{"text": system_instruction}]},
+            "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+            "generationConfig": {
+                "temperature": 0.45,
+                "responseMimeType": "application/json",
+                "maxOutputTokens": 1400,
+            },
+        }
+        gemini_url = (
+            "https://generativelanguage.googleapis.com/v1beta/"
+            f"models/{GEMINI_MODEL}:generateContent"
+        )
+        try:
+            response = await call_gemini_with_retry(
+                gemini_url, gemini_payload, timeout=45.0
+            )
+        except HTTPException as gemini_error:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Groq primary unavailable ({groq_failure}). Gemini backup also failed: {gemini_error.detail}",
+            ) from gemini_error
 
-        generated = json.loads(raw_text)
-        hook = str(generated["hook"]).strip()
-        explanation = str(generated["explanation"]).strip()
-        cta = str(generated["cta"]).strip()
-        caption = str(generated["caption"]).strip()
-        hashtags = str(generated["hashtags"]).strip()
-    except (KeyError, IndexError, StopIteration, TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Gemini returned an unreadable draft. Please try again.",
-        ) from exc
+        if response.is_error:
+            try:
+                upstream_error = response.json().get("error", {}).get("message", "")
+            except (ValueError, AttributeError):
+                upstream_error = ""
+            detail = f"Gemini backup failed (HTTP {response.status_code})."
+            if upstream_error:
+                detail = f"{detail} {str(upstream_error).replace(chr(10), ' ')[:180]}"
+            raise HTTPException(
+                status_code=503,
+                detail=f"Groq primary unavailable ({groq_failure}). {detail}",
+            )
+        try:
+            data = response.json()
+            parts = data["candidates"][0]["content"]["parts"]
+            raw_text = next(part["text"] for part in parts if "text" in part)
+            import json
+            generated = json.loads(raw_text)
+            for field in ("hook", "explanation", "cta", "caption", "hashtags"):
+                if not isinstance(generated.get(field), str) or not generated[field].strip():
+                    raise ValueError(f"Missing or invalid {field}.")
+            used_model = GEMINI_MODEL
+            used_provider = "Gemini backup"
+        except (KeyError, IndexError, StopIteration, TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="Gemini backup returned an unreadable draft.",
+            ) from exc
 
-    script = f"[HOOK]\n{hook}\n\n[EXPLANATION]\n{explanation}\n\n[CTA]\n{cta}"
+    hook = generated["hook"].strip()
+    explanation = generated["explanation"].strip()
+    cta = generated["cta"].strip()
+    caption = generated["caption"].strip()
+    hashtags = generated["hashtags"].strip()
+    script = f"[HOOK]\\n{hook}\\n\\n[EXPLANATION]\\n{explanation}\\n\\n[CTA]\\n{cta}"
     return ReelResponse(
         script=script,
         caption=caption,
         hashtags=hashtags,
-        model=GEMINI_MODEL,
+        model=used_model,
+        provider=used_provider,
         verified=False,
     )
+
 
 
 class FactCheckRequest(BaseModel):
