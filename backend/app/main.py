@@ -408,28 +408,69 @@ def _draw_reel_scene(text: str, scene_index: int, total_scenes: int, output_path
     width, height = 1080, 1920
     image = Image.new("RGB", (width, height), (15, 18, 30))
     draw = ImageDraw.Draw(image)
-    # Decorative finance-inspired shapes; no external stock assets required.
     accent = [(158, 132, 255), (79, 196, 180), (255, 181, 91)][scene_index % 3]
-    draw.rounded_rectangle((54, 54, 1026, 1866), radius=54, outline=(54, 59, 79), width=4)
-    draw.ellipse((760, -180, 1240, 300), fill=(31, 35, 58))
-    draw.ellipse((-180, 1500, 330, 2010), fill=(28, 36, 54))
-    draw.rounded_rectangle((92, 120, 330, 184), radius=30, fill=(42, 39, 65))
-    small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
-    label_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 34)
-    title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 68)
-    footer_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
-    draw.text((125, 132), "REELPILOT  •  FINANCE", font=small_font, fill=(215, 208, 255))
-    draw.rounded_rectangle((92, 300, 988, 310), radius=5, fill=accent)
-    words = wrap(text, width=22, break_long_words=True, break_on_hyphens=False)
-    line_height = 100
-    block_height = len(words) * line_height
-    y = max(570, (height - block_height) // 2)
-    for line in words[:10]:
-        draw.text((105, y), line, font=title_font, fill=(246, 247, 251), stroke_width=1, stroke_fill=(246, 247, 251))
+    white = (246, 247, 251)
+    muted = (164, 174, 197)
+
+    # Clean, high-contrast layout with generous Instagram-safe margins.
+    draw.rounded_rectangle((42, 42, 1038, 1878), radius=48, outline=(48, 55, 76), width=3)
+    draw.ellipse((790, -170, 1240, 280), fill=(29, 34, 57))
+    draw.ellipse((-210, 1570, 270, 2050), fill=(25, 34, 53))
+    draw.rounded_rectangle((88, 104, 420, 174), radius=28, fill=(39, 42, 67))
+    small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 27)
+    label_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 31)
+    footer_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 27)
+    draw.text((116, 122), "REELPILOT  •  FINANCE", font=small_font, fill=(220, 214, 255))
+
+    # Accent progress bar and a restrained scene marker.
+    draw.rounded_rectangle((88, 250, 992, 260), radius=5, fill=(45, 50, 69))
+    draw.rounded_rectangle((88, 250, 88 + int(904 * (scene_index + 1) / max(total_scenes, 1)), 260), radius=5, fill=accent)
+    draw.text((88, 310), f"QUICK EXPLAINER  /  {scene_index + 1:02d}", font=label_font, fill=accent)
+
+    # Wrap by actual pixel width, then shrink the font until every word fits.
+    max_width = 820
+    clean_text = " ".join(text.split())
+    chosen_font = None
+    chosen_lines = []
+    for font_size in range(58, 39, -2):
+        candidate_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+        lines = []
+        current = ""
+        for word in clean_text.split():
+            trial = f"{current} {word}".strip()
+            if current and draw.textbbox((0, 0), trial, font=candidate_font)[2] > max_width:
+                lines.append(current)
+                current = word
+            else:
+                current = trial
+        if current:
+            lines.append(current)
+        line_height = int(font_size * 1.38)
+        if len(lines) <= 7 and len(lines) * line_height <= 720:
+            chosen_font, chosen_lines = candidate_font, lines
+            break
+    if chosen_font is None:
+        chosen_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+        chosen_lines = wrap(clean_text, width=34)[:8]
+        line_height = 58
+    else:
+        line_height = int(chosen_font.size * 1.38)
+
+    block_height = len(chosen_lines) * line_height
+    y = 560 + max(0, (720 - block_height) // 2)
+    draw.rounded_rectangle((72, 480, 1008, 1390), radius=42, fill=(20, 25, 42), outline=(43, 51, 73), width=2)
+    for line_index, line in enumerate(chosen_lines):
+        bbox = draw.textbbox((0, 0), line, font=chosen_font)
+        line_width = bbox[2] - bbox[0]
+        x = (width - line_width) // 2
+        fill = accent if line_index == 0 else white
+        draw.text((x, y), line, font=chosen_font, fill=fill)
         y += line_height
-    draw.rounded_rectangle((92, 1590, 988, 1730), radius=34, fill=(34, 38, 57))
-    draw.text((130, 1630), "Follow for simple money explainers", font=label_font, fill=(199, 190, 255))
-    draw.text((92, 1780), f"{scene_index + 1:02d}  /  {total_scenes:02d}", font=footer_font, fill=(154, 163, 184))
+
+    draw.rounded_rectangle((88, 1550, 992, 1700), radius=32, fill=(34, 39, 60))
+    draw.text((126, 1598), "Follow for simple money explainers", font=label_font, fill=(210, 204, 255))
+    draw.text((88, 1770), f"{scene_index + 1:02d}  /  {total_scenes:02d}", font=footer_font, fill=muted)
+    draw.text((992, 1770), "LEARN • SAVE • SHARE", font=footer_font, fill=muted, anchor="ra")
     image.save(output_path, format="PNG", optimize=True)
 
 
