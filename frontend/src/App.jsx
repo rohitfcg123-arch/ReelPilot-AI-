@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  Activity, CalendarDays, BarChart3, Clapperboard,
+  Activity, Volume2, CalendarDays, BarChart3, Clapperboard,
   Clock3, FileText, Film, Image, Instagram, LayoutDashboard,
   Menu, Plus, Settings, ShieldCheck, Sparkles, X, Zap
 } from "lucide-react";
@@ -176,6 +176,8 @@ function ReelStudio({ onSave }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCheckingFacts, setIsCheckingFacts] = useState(false);
   const [factCheck, setFactCheck] = useState(null);
+  const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
+  const [voiceoverUrl, setVoiceoverUrl] = useState("");
 
   const checkFacts = async () => {
     if (!script.trim()) {
@@ -203,6 +205,45 @@ function ReelStudio({ onSave }) {
       setError(err.message || "Could not run the fact-check.");
     } finally {
       setIsCheckingFacts(false);
+    }
+  };
+
+  const generateVoiceover = async () => {
+    if (!script.trim()) {
+      setError("Generate a script before creating its voiceover.");
+      return;
+    }
+    const spokenText = script
+      .replace(/\\[(HOOK|EXPLANATION|CTA)\\]/gi, "")
+      .replace(/\\n{3,}/g, "\\n\\n")
+      .trim();
+    if (spokenText.length > 2500) {
+      setError("Voiceover text is longer than Sarvam's 2,500-character request limit.");
+      return;
+    }
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\\/$/, "");
+    if (!apiBase) {
+      setError("AI backend is not connected. Configure VITE_API_BASE_URL first.");
+      return;
+    }
+    setError("");
+    setIsGeneratingVoice(true);
+    setVoiceoverUrl("");
+    try {
+      const response = await fetch(`${apiBase}/api/generate-voiceover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: spokenText, language_code: "hi-IN", speaker: "shubh" })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "Voiceover generation failed.");
+      const bytes = Uint8Array.from(atob(data.audio_base64), char => char.charCodeAt(0));
+      const audioBlob = new Blob([bytes], { type: data.mime_type || "audio/mpeg" });
+      setVoiceoverUrl(URL.createObjectURL(audioBlob));
+    } catch (err) {
+      setError(err.message || "Could not generate voiceover.");
+    } finally {
+      setIsGeneratingVoice(false);
     }
   };
 
@@ -275,6 +316,18 @@ function ReelStudio({ onSave }) {
         {script ? (
           <>
             <pre className="script-preview">{script}</pre>
+            <div className="fact-check-actions">
+              <button className="secondary-btn fact-check-btn" onClick={generateVoiceover} disabled={isGeneratingVoice}>
+                <Volume2 size={15}/> {isGeneratingVoice ? "Generating Hindi voice..." : "Generate Hindi voiceover"}
+              </button>
+              <p>Powered by Sarvam Bulbul v3. Free signup credits are limited; each generated voice uses credits.</p>
+              {voiceoverUrl && (
+                <div className="voiceover-player">
+                  <audio controls src={voiceoverUrl}>Your browser does not support audio playback.</audio>
+                  <a className="secondary-btn" href={voiceoverUrl} download="reelpilot-voiceover.mp3">Download voiceover</a>
+                </div>
+              )}
+            </div>
             <div className="fact-check-actions">
               <button className="secondary-btn fact-check-btn" onClick={checkFacts} disabled={isCheckingFacts}>
                 <ShieldCheck size={15}/> {isCheckingFacts ? "Checking claims with Google Search..." : "Check facts & sources"}
