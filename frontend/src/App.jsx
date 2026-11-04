@@ -214,14 +214,14 @@ function ReelStudio({ onSave }) {
       return;
     }
     const spokenText = script
-      .replace(/\\[(HOOK|EXPLANATION|CTA)\\]/gi, "")
-      .replace(/\\n{3,}/g, "\\n\\n")
+      .replace(/\[(HOOK|EXPLANATION|CTA)\]/gi, "")
+      .replace(/\n{3,}/g, "\n\n")
       .trim();
     if (spokenText.length > 2500) {
       setError("Voiceover text is longer than Sarvam's 2,500-character request limit.");
       return;
     }
-    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\\/$/, "");
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
     if (!apiBase) {
       setError("AI backend is not connected. Configure VITE_API_BASE_URL first.");
       return;
