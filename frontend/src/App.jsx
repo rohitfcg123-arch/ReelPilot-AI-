@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Activity, CalendarDays, ChartNoAxesCombined, Clapperboard,
+  Activity, CalendarDays, BarChart3, Clapperboard,
   Clock3, FileText, Film, Image, Instagram, LayoutDashboard,
   Menu, Plus, Settings, ShieldCheck, Sparkles, X, Zap
 } from "lucide-react";
@@ -18,7 +18,7 @@ const navItems = [
   ["Reel studio", Clapperboard],
   ["Story studio", Image],
   ["Publishing", Instagram],
-  ["Analytics", ChartNoAxesCombined],
+  ["Analytics", BarChart3],
   ["Settings", Settings]
 ];
 
