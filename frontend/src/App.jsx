@@ -178,6 +178,10 @@ function ReelStudio({ onSave }) {
   const [factCheck, setFactCheck] = useState(null);
   const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
   const [voiceoverUrl, setVoiceoverUrl] = useState("");
+  const [voiceoverBase64, setVoiceoverBase64] = useState("");
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [isRenderingVideo, setIsRenderingVideo] = useState(false);
 
   const checkFacts = async () => {
     if (!script.trim()) {
@@ -229,6 +233,9 @@ function ReelStudio({ onSave }) {
     setError("");
     setIsGeneratingVoice(true);
     setVoiceoverUrl("");
+    setVoiceoverBase64("");
+    setVideoUrl("");
+    setAudioDuration(0);
     try {
       const response = await fetch(`${apiBase}/api/generate-voiceover`, {
         method: "POST",
@@ -239,11 +246,47 @@ function ReelStudio({ onSave }) {
       if (!response.ok) throw new Error(data.detail || "Voiceover generation failed.");
       const bytes = Uint8Array.from(atob(data.audio_base64), char => char.charCodeAt(0));
       const audioBlob = new Blob([bytes], { type: data.mime_type || "audio/mpeg" });
+      setVoiceoverBase64(data.audio_base64);
       setVoiceoverUrl(URL.createObjectURL(audioBlob));
     } catch (err) {
       setError(err.message || "Could not generate voiceover.");
     } finally {
       setIsGeneratingVoice(false);
+    }
+  };
+
+  const renderVideo = async () => {
+    if (!script.trim() || !voiceoverBase64 || !audioDuration) {
+      setError("Generate and load a voiceover before rendering the Reel.");
+      return;
+    }
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+    if (!apiBase) {
+      setError("AI backend is not connected. Configure VITE_API_BASE_URL first.");
+      return;
+    }
+    setError("");
+    setIsRenderingVideo(true);
+    setVideoUrl("");
+    try {
+      const response = await fetch(`${apiBase}/api/render-reel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          script,
+          audio_base64: voiceoverBase64,
+          audio_duration_seconds: Math.min(audioDuration, 90)
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "Video rendering failed.");
+      const bytes = Uint8Array.from(atob(data.video_base64), char => char.charCodeAt(0));
+      const videoBlob = new Blob([bytes], { type: data.mime_type || "video/mp4" });
+      setVideoUrl(URL.createObjectURL(videoBlob));
+    } catch (err) {
+      setError(err.message || "Could not render the Reel video.");
+    } finally {
+      setIsRenderingVideo(false);
     }
   };
 
@@ -274,6 +317,10 @@ function ReelStudio({ onSave }) {
         throw new Error(data.detail || "Could not generate the script. Please try again.");
       }
       setScript(data.script || "");
+      setVoiceoverBase64("");
+      setVoiceoverUrl("");
+      setVideoUrl("");
+      setAudioDuration(0);
       setCaption([data.caption, data.hashtags].filter(Boolean).join("\n\n"));
       setProvider(data.provider || "AI provider");
       setModel(data.model || "");
@@ -323,8 +370,18 @@ function ReelStudio({ onSave }) {
               <p>Powered by Sarvam Bulbul v3. Free signup credits are limited; each generated voice uses credits.</p>
               {voiceoverUrl && (
                 <div className="voiceover-player">
-                  <audio controls src={voiceoverUrl}>Your browser does not support audio playback.</audio>
+                  <audio controls src={voiceoverUrl} onLoadedMetadata={(event) => setAudioDuration(event.currentTarget.duration || 0)}>Your browser does not support audio playback.</audio>
                   <a className="secondary-btn" href={voiceoverUrl} download="reelpilot-voiceover.mp3">Download voiceover</a>
+                  <button className="primary-btn render-video-btn" onClick={renderVideo} disabled={isRenderingVideo || !audioDuration}>
+                    <Film size={15}/> {isRenderingVideo ? "Rendering 9:16 MP4..." : "Create Reel video"}
+                  </button>
+                  {videoUrl && (
+                    <div className="rendered-video">
+                      <strong>Reel preview · 1080 × 1920 MP4</strong>
+                      <video controls playsInline src={videoUrl}>Your browser does not support video playback.</video>
+                      <a className="secondary-btn" href={videoUrl} download="reelpilot-instagram-reel.mp4">Download MP4 Reel</a>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
