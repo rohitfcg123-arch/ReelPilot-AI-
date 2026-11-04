@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import Literal
 
@@ -31,6 +32,46 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+
+async def call_gemini_with_retry(url: str, payload: dict, timeout: float) -> httpx.Response:
+    """Retry transient Gemini overloads; do not retry quota or auth failures."""
+    retryable_statuses = {500, 502, 503, 504}
+    last_response = None
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for attempt in range(3):
+            try:
+                response = await client.post(
+                    url,
+                    headers={
+                        "x-goog-api-key": GEMINI_API_KEY,
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+            except httpx.TimeoutException:
+                if attempt == 2:
+                    raise HTTPException(
+                        status_code=504,
+                        detail="Gemini timed out after 3 attempts. Please retry in a minute.",
+                    )
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            except httpx.HTTPError as exc:
+                if attempt == 2:
+                    raise HTTPException(
+                        status_code=502,
+                        detail="Could not reach Gemini after 3 attempts. Please retry.",
+                    ) from exc
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+
+            last_response = response
+            if response.status_code not in retryable_statuses or attempt == 2:
+                return response
+            await asyncio.sleep(1.5 * (attempt + 1))
+
+    return last_response
 
 
 class ReelRequest(BaseModel):
@@ -105,20 +146,7 @@ async def generate_reel(request: ReelRequest) -> ReelResponse:
         f"models/{GEMINI_MODEL}:generateContent"
     )
 
-    try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            response = await client.post(
-                url,
-                headers={
-                    "x-goog-api-key": GEMINI_API_KEY,
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-    except httpx.TimeoutException as exc:
-        raise HTTPException(status_code=504, detail="Gemini request timed out. Try again.") from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="Could not reach Gemini. Try again.") from exc
+    response = await call_gemini_with_retry(url, payload, timeout=45.0)
 
     if response.status_code == 429:
         raise HTTPException(
@@ -242,20 +270,7 @@ async def fact_check_script(request: FactCheckRequest) -> FactCheckResponse:
         "https://generativelanguage.googleapis.com/v1beta/"
         f"models/{GEMINI_MODEL}:generateContent"
     )
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                url,
-                headers={
-                    "x-goog-api-key": GEMINI_API_KEY,
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-    except httpx.TimeoutException as exc:
-        raise HTTPException(status_code=504, detail="Fact-check search timed out. Try again.") from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="Could not reach Gemini fact-check search.") from exc
+    response = await call_gemini_with_retry(url, payload, timeout=60.0)
 
     if response.status_code == 429:
         raise HTTPException(
