@@ -152,62 +152,40 @@ function ReelStudio({ onSave }) {
   const [script, setScript] = useState("");
   const [caption, setCaption] = useState("");
   const [error, setError] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
 
-  const generateDraft = () => {
-    const cleanTopic = topic.trim().replace(/[\s"'”’]+$/g, "").replace(/^[\s"'“‘]+/g, "");
+  const generateDraft = async () => {
+    const cleanTopic = topic.trim();
     if (cleanTopic.length < 4) {
       setError("Please enter a topic with at least 4 characters.");
       return;
     }
-    setError("");
 
-    const isMinimumDue = /credit\s*card/i.test(cleanTopic) && /minimum\s*due/i.test(cleanTopic);
-    const isCibil = /cibil|credit\s*score/i.test(cleanTopic);
-    let opening;
-    let body;
-
-    if (isCibil) {
-      opening = format === "Myth vs fact"
-        ? "CIBIL score 750 se kam hai, toh kya loan pakka reject hoga? Nahi, approval guaranteed nahi hota—but rejection bhi automatic nahi hai."
-        : format === "3 quick points"
-        ? "CIBIL score 750 se kam hai? Loan apply karne se pehle ye 3 baatein samjho."
-        : "CIBIL score 750 se kam hone par loan milna mushkil ho sakta hai, lekin sirf score se final decision nahi hota.";
-      body = duration === "60 seconds"
-        ? "\n\n1. Lenders credit score ke saath income, existing EMIs, repayment history aur job/business stability bhi dekhte hain.\n2. Lower score par lender loan reject kar sakta hai, lower amount offer kar sakta hai, ya higher interest rate de sakta hai. Ye lender ki policy par depend karta hai.\n3. Credit report mein errors check karo, EMIs aur card bills time par pay karo, aur multiple loan applications ek saath mat daalo.\n\nYaad rakho: 750 koi universal approval guarantee ya fixed RBI rule nahi hai. Har lender ka assessment alag ho sakta hai."
-        : "\n\nBank sirf CIBIL score nahi dekhta—income, existing EMI aur repayment history bhi check karta hai.\nLow score par loan reject ho sakta hai, amount kam mil sakta hai ya interest rate zyada ho sakta hai.\nCredit report ki mistakes check karo aur payments time par karo.\n750 koi guaranteed approval rule nahi hai; lender ki policy matter karti hai.";
-    } else if (isMinimumDue) {
-      opening = format === "Myth vs fact"
-        ? "Credit card ka sirf Minimum Due bhar diya, toh kya aapka poora bill clear ho gaya? Nahi."
-        : format === "3 quick points"
-        ? "Credit card ka Minimum Due bharte waqt ye 3 baatein yaad rakho."
-        : "Credit card bill mein Minimum Due bharna easy lagta hai, lekin iska matlab bill khatam hona nahi hai.";
-      body = duration === "60 seconds"
-        ? "\n\n1. Minimum Due, total outstanding amount ka sirf ek hissa hota hai.\n2. Due date tak Minimum Due pay karne se late-payment consequences se bachne mein madad mil sakti hai, lekin baaki balance unpaid rehta hai.\n3. Bache hue balance par card issuer ke terms ke mutabik finance charges/interest lag sakta hai. Interest-free period bhi affect ho sakta hai.\n\nExample: Agar total bill ₹10,000 hai aur aap sirf ₹500 Minimum Due pay karte hain, toh baaki ₹9,500 automatically maaf nahi hota. Exact charges apne card statement aur issuer ke MITC mein check karein."
-        : "\n\nMinimum Due total bill ka sirf ek chhota hissa hota hai.\nAap ise pay kar do, tab bhi baaki outstanding amount clear nahi hota.\nBache hue balance par card ke terms ke hisaab se interest/finance charges lag sakte hain.\nIsliye possible ho toh total bill due date tak pay karo.";
-    } else {
-      opening = format === "Myth vs fact"
-        ? `Kya aapko lagta hai ki ${cleanTopic} ke baare mein jo popular baat kahi jaati hai, woh hamesha sahi hoti hai? Zaroori nahi.`
-        : format === "Explainer"
-        ? `Aaj simple language mein samajhte hain: ${cleanTopic}.`
-        : `Agar aap ${cleanTopic} ko lekar confused hain, ye 3 baatein samajh lijiye.`;
-      body = duration === "60 seconds"
-        ? `\n\nPoint 1: ${cleanTopic} ka basic concept aur meaning samjhein.\nPoint 2: Iska practical impact ek simple real-life example se dekhein.\nPoint 3: Apni situation par apply karne se pehle current rules, dates aur official source verify karein.`
-        : `\n\nPehli baat: ${cleanTopic} ka basic concept samjhein.\nDoosri baat: iska practical impact apni situation par check karein.\nTeesri baat: action lene se pehle latest official guidance verify karein.`;
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\\/$/, "");
+    if (!apiBase) {
+      setError("AI backend is not connected yet. The backend must be deployed and VITE_API_BASE_URL configured first.");
+      return;
     }
 
-    const ending = "\n\nSave this Reel, aur aise practical finance explainers ke liye follow karein.";
-    setScript(`[HOOK]\n${opening}\n\n[EXPLANATION]${body}\n\n[CTA]${ending}`);
-    const captionText = isCibil
-      ? "A lower credit score can affect loan eligibility and terms, but lenders also assess income, existing debt and repayment history. Check your credit report and lender criteria."
-      : isMinimumDue
-      ? "Minimum Due pay karna full credit card bill clear karne ke barabar nahi hai. Remaining balance par charges lag sakte hain—apne issuer ke latest terms aur statement check karein."
-      : `${cleanTopic}: simple Hinglish explainer. Verify current rules and official guidance before acting.`;
-    const hashtags = isCibil
-      ? "#CIBILScore #CreditScore #LoanTips #PersonalFinance #FinanceEducation"
-      : isMinimumDue
-      ? "#CreditCard #PersonalFinance #FinanceEducation #MoneyTips #India"
-      : "#FinanceEducation #PersonalFinance #MoneyTips #India #LearnFinance";
-    setCaption(`${captionText}\n\n${hashtags}`);
+    setError("");
+    setIsGenerating(true);
+    try {
+      const response = await fetch(`${apiBase}/api/generate-reel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: cleanTopic, format, duration })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not generate the script. Please try again.");
+      }
+      setScript(data.script || "");
+      setCaption([data.caption, data.hashtags].filter(Boolean).join("\\n\\n"));
+    } catch (err) {
+      setError(err.message || "Could not connect to the AI backend.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -234,8 +212,8 @@ function ReelStudio({ onSave }) {
           </div>
         </div>
         {error && <p className="studio-error">{error}</p>}
-        <button className="primary-btn studio-generate" onClick={generateDraft}><Sparkles size={17}/> Create script draft</button>
-        <p className="studio-disclaimer">This is a template-based draft, not AI-generated or tax-verified content. Verify every legal, tax and financial claim against current official sources before publishing.</p>
+        <button className="primary-btn studio-generate" onClick={generateDraft} disabled={isGenerating}><Sparkles size={17}/> {isGenerating ? "Generating with Gemini..." : "Generate AI script"}</button>
+        <p className="studio-disclaimer">AI-generated drafts are not tax- or fact-verified. Verify every legal, tax and financial claim against current official sources before publishing.</p>
       </div>
       <div className="panel studio-output">
         <div className="panel-heading"><div><h2><FileText size={18}/> Script preview</h2><p>Hook · Explanation · Call to action</p></div></div>
