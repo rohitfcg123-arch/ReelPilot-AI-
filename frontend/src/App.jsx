@@ -153,6 +153,37 @@ function ReelStudio({ onSave }) {
   const [caption, setCaption] = useState("");
   const [error, setError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isCheckingFacts, setIsCheckingFacts] = useState(false);
+  const [factCheck, setFactCheck] = useState(null);
+
+  const checkFacts = async () => {
+    if (!script.trim()) {
+      setError("Generate a script before checking its facts.");
+      return;
+    }
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\\/$/, "");
+    if (!apiBase) {
+      setError("AI backend is not connected. Configure VITE_API_BASE_URL first.");
+      return;
+    }
+    setError("");
+    setIsCheckingFacts(true);
+    setFactCheck(null);
+    try {
+      const response = await fetch(`${apiBase}/api/fact-check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "Fact-check failed. Please try again.");
+      setFactCheck(data);
+    } catch (err) {
+      setError(err.message || "Could not run the fact-check.");
+    } finally {
+      setIsCheckingFacts(false);
+    }
+  };
 
   const generateDraft = async () => {
     const cleanTopic = topic.trim();
@@ -220,6 +251,43 @@ function ReelStudio({ onSave }) {
         {script ? (
           <>
             <pre className="script-preview">{script}</pre>
+            <div className="fact-check-actions">
+              <button className="secondary-btn fact-check-btn" onClick={checkFacts} disabled={isCheckingFacts}>
+                <ShieldCheck size={15}/> {isCheckingFacts ? "Checking claims with Google Search..." : "Check facts & sources"}
+              </button>
+              <p>AI-assisted research only. Every claim still requires human review before publishing.</p>
+            </div>
+            {factCheck && (
+              <section className="fact-report">
+                <div className="fact-report-heading">
+                  <div><strong>Fact-check report</strong><span>{factCheck.grounded ? "Search sources found" : "No grounded sources returned"}</span></div>
+                  <span className="review-required">{factCheck.review_status === "review_required" ? "Review required" : "Not approved"}</span>
+                </div>
+                <p className="fact-summary">{factCheck.summary}</p>
+                <div className="fact-counts">
+                  <span className="supported">Supported: {factCheck.claims?.filter(item => item.assessment === "supported").length || 0}</span>
+                  <span className="contradicted">Contradicted: {factCheck.claims?.filter(item => item.assessment === "contradicted").length || 0}</span>
+                  <span className="unclear">Unclear: {factCheck.claims?.filter(item => item.assessment === "unclear").length || 0}</span>
+                </div>
+                <div className="fact-claims">
+                  {(factCheck.claims || []).map((item, index) => (
+                    <div className="fact-claim" key={index}>
+                      <div><strong>{item.claim}</strong><span className={`claim-status ${item.assessment}`}>{item.assessment}</span></div>
+                      <p>{item.explanation}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="fact-sources">
+                  <strong>Sources</strong>
+                  {(factCheck.sources || []).length ? factCheck.sources.map((source, index) => (
+                    <a key={index} href={source.url} target="_blank" rel="noreferrer">
+                      {source.title} <span>{source.domain} · {source.source_type}</span>
+                    </a>
+                  )) : <p>No source links were returned. Treat all claims as unverified.</p>}
+                </div>
+                <small>Checked: {factCheck.checked_at ? new Date(factCheck.checked_at).toLocaleString() : "Time unavailable"} · Human review required</small>
+              </section>
+            )}
             <label className="field-label">Caption and hashtags</label>
             <textarea className="studio-input caption-input" value={caption} onChange={(e) => setCaption(e.target.value)} rows={5} />
             <button className="secondary-btn" onClick={() => onSave(topic.trim())}>Save as Reel draft</button>
