@@ -1,12 +1,18 @@
 import asyncio
 import base64
 import os
+import subprocess
+import tempfile
+from pathlib import Path
+from textwrap import wrap
 from typing import Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from PIL import Image, ImageDraw, ImageFont
+import imageio_ffmpeg
 
 APP_ENV = os.getenv("APP_ENV", "development")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
@@ -381,6 +387,127 @@ async def generate_voiceover(request: VoiceoverRequest) -> VoiceoverResponse:
         return VoiceoverResponse(audio_base64=audio_base64)
     except (KeyError, IndexError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=502, detail="Sarvam returned an unreadable audio response.") from exc
+
+
+
+class RenderReelRequest(BaseModel):
+    script: str = Field(min_length=20, max_length=5000)
+    audio_base64: str = Field(min_length=100, max_length=16_000_000)
+    audio_duration_seconds: float = Field(gt=1, le=90)
+
+
+class RenderReelResponse(BaseModel):
+    video_base64: str
+    mime_type: str = "video/mp4"
+    width: int = 1080
+    height: int = 1920
+    provider: str = "ReelPilot renderer"
+
+
+def _draw_reel_scene(text: str, scene_index: int, total_scenes: int, output_path: str) -> None:
+    width, height = 1080, 1920
+    image = Image.new("RGB", (width, height), (15, 18, 30))
+    draw = ImageDraw.Draw(image)
+    # Decorative finance-inspired shapes; no external stock assets required.
+    accent = [(158, 132, 255), (79, 196, 180), (255, 181, 91)][scene_index % 3]
+    draw.rounded_rectangle((54, 54, 1026, 1866), radius=54, outline=(54, 59, 79), width=4)
+    draw.ellipse((760, -180, 1240, 300), fill=(31, 35, 58))
+    draw.ellipse((-180, 1500, 330, 2010), fill=(28, 36, 54))
+    draw.rounded_rectangle((92, 120, 330, 184), radius=30, fill=(42, 39, 65))
+    small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
+    label_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 34)
+    title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 68)
+    footer_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
+    draw.text((125, 132), "REELPILOT  •  FINANCE", font=small_font, fill=(215, 208, 255))
+    draw.rounded_rectangle((92, 300, 988, 310), radius=5, fill=accent)
+    words = wrap(text, width=22, break_long_words=True, break_on_hyphens=False)
+    line_height = 100
+    block_height = len(words) * line_height
+    y = max(570, (height - block_height) // 2)
+    for line in words[:10]:
+        draw.text((105, y), line, font=title_font, fill=(246, 247, 251), stroke_width=1, stroke_fill=(246, 247, 251))
+        y += line_height
+    draw.rounded_rectangle((92, 1590, 988, 1730), radius=34, fill=(34, 38, 57))
+    draw.text((130, 1630), "Follow for simple money explainers", font=label_font, fill=(199, 190, 255))
+    draw.text((92, 1780), f"{scene_index + 1:02d}  /  {total_scenes:02d}", font=footer_font, fill=(154, 163, 184))
+    image.save(output_path, format="PNG", optimize=True)
+
+
+def _render_reel_video(script: str, audio_base64: str, duration: float) -> str:
+    try:
+        audio_bytes = base64.b64decode(audio_base64, validate=True)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("Voiceover audio data is invalid.") from exc
+    if len(audio_bytes) > 12_000_000:
+        raise ValueError("Voiceover audio is too large to render.")
+    clean_lines = []
+    for line in script.splitlines():
+        line = line.strip()
+        if not line or (line.startswith("[") and line.endswith("]")):
+            continue
+        clean_lines.append(line)
+    raw_text = " ".join(clean_lines)
+    chunks = wrap(raw_text, width=92, break_long_words=False, break_on_hyphens=False)
+    scenes = [" ".join(chunks[i:i + 2]) for i in range(0, len(chunks), 2)]
+    scenes = [scene for scene in scenes if scene][:8]
+    if not scenes:
+        raise ValueError("No readable script text was supplied.")
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    with tempfile.TemporaryDirectory(prefix="reelpilot-") as temp_dir:
+        audio_path = os.path.join(temp_dir, "voiceover.mp3")
+        with open(audio_path, "wb") as audio_file:
+            audio_file.write(audio_bytes)
+        image_paths = []
+        for index, scene in enumerate(scenes):
+            image_path = os.path.join(temp_dir, f"scene-{index:02d}.png")
+            _draw_reel_scene(scene, index, len(scenes), image_path)
+            image_paths.append(image_path)
+        scene_duration = duration / len(image_paths)
+        concat_path = os.path.join(temp_dir, "scenes.txt")
+        with open(concat_path, "w", encoding="utf-8") as concat_file:
+            for image_path in image_paths:
+                concat_file.write(f"file '{image_path}'\n")
+                concat_file.write(f"duration {scene_duration:.3f}\n")
+            concat_file.write(f"file '{image_paths[-1]}'\n")
+        output_path = os.path.join(temp_dir, "reelpilot-reel.mp4")
+        command = [
+            ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "concat", "-safe", "0", "-i", concat_path,
+            "-i", audio_path,
+            "-vf", "fps=24,scale=1080:1920,format=yuv420p",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "27",
+            "-c:a", "aac", "-b:a", "128k", "-t", f"{duration:.3f}",
+            "-shortest", "-movflags", "+faststart", output_path,
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Video rendering took too long on the current server. Try a shorter voiceover.") from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or "")[-500:]
+            raise RuntimeError(f"Video encoder failed: {detail}") from exc
+        with open(output_path, "rb") as video_file:
+            rendered = video_file.read()
+        if len(rendered) > 14_000_000:
+            raise ValueError("Rendered video is too large to return. Try a shorter script.")
+        return base64.b64encode(rendered).decode("ascii")
+
+
+@app.post("/api/render-reel", response_model=RenderReelResponse)
+async def render_reel(request: RenderReelRequest) -> RenderReelResponse:
+    """Render a simple 9:16 MP4 from generated scenes and the Sarvam voiceover."""
+    try:
+        video_base64 = await asyncio.to_thread(
+            _render_reel_video,
+            request.script,
+            request.audio_base64,
+            request.audio_duration_seconds,
+        )
+        return RenderReelResponse(video_base64=video_base64)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 class FactCheckRequest(BaseModel):
