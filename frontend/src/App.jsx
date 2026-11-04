@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Activity, CalendarDays, BarChart3, Clapperboard,
   Clock3, FileText, Film, Image, Instagram, LayoutDashboard,
@@ -26,7 +26,21 @@ export default function App() {
   const [active, setActive] = useState("Overview");
   const [menuOpen, setMenuOpen] = useState(false);
   const [posts, setPosts] = useState(initialPosts);
-  const [publishMode, setPublishMode] = useState("manual");
+  const [publishMode, setPublishMode] = useState(() => {
+    try {
+      return window.localStorage.getItem("reelpilot_publish_mode") === "automatic" ? "automatic" : "manual";
+    } catch {
+      return "manual";
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("reelpilot_publish_mode", publishMode);
+    } catch {
+      // Keep the app usable if browser storage is unavailable.
+    }
+  }, [publishMode]);
 
   const saveReelDraft = (title) => {
     setPosts((items) => [
