@@ -131,10 +131,17 @@ async def generate_reel(request: ReelRequest) -> ReelResponse:
             detail="Gemini rejected the backend API key or project access.",
         )
     if response.is_error:
-        raise HTTPException(
-            status_code=502,
-            detail="Gemini could not generate this draft. Try a different topic.",
-        )
+        # Surface the upstream status and Google's safe error message so deployment
+        # issues can be diagnosed without exposing the API key.
+        try:
+            upstream_error = response.json().get("error", {}).get("message", "")
+        except (ValueError, AttributeError):
+            upstream_error = ""
+        safe_message = str(upstream_error).replace("\\n", " ").strip()[:240]
+        detail = f"Gemini API error (HTTP {response.status_code})."
+        if safe_message:
+            detail = f"{detail} {safe_message}"
+        raise HTTPException(status_code=502, detail=detail)
 
     try:
         data = response.json()
