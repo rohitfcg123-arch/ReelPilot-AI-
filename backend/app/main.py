@@ -474,9 +474,10 @@ def _render_reel_video(script: str, audio_base64: str, duration: float) -> str:
             ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
             "-f", "concat", "-safe", "0", "-i", concat_path,
             "-i", audio_path,
-            "-vf", "fps=24,scale=1080:1920,zoompan=z='min(zoom+0.0005,1.08)':d=1:s=1080x1920:fps=24,format=yuv420p",
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "27",
-            "-c:a", "aac", "-b:a", "128k", "-t", f"{duration:.3f}",
+            # Keep encoding lightweight for Render's small memory instances.
+            "-vf", "fps=20,scale=720:1280:flags=fast_bilinear,format=yuv420p",
+            "-threads", "1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
+            "-c:a", "aac", "-b:a", "96k", "-threads", "1", "-t", f"{duration:.3f}",
             "-shortest", "-movflags", "+faststart", output_path,
         ]
         try:
