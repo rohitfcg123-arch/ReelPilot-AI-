@@ -27,6 +27,14 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [posts, setPosts] = useState(initialPosts);
 
+  const saveReelDraft = (title) => {
+    setPosts((items) => [
+      { id: Date.now(), type: "REEL", title, time: "Not scheduled", status: "Draft", tag: "Reel Studio" },
+      ...items
+    ]);
+    setActive("Overview");
+  };
+
   const addDraft = () => {
     setPosts((items) => [
       { id: Date.now(), type: "REEL", title: "New content idea — add your topic", time: "Not scheduled", status: "Draft", tag: "Unassigned" },
@@ -83,6 +91,10 @@ export default function App() {
             <div><strong>Setup mode — publishing is not active</strong><p>This dashboard is an initial UI. Connect Meta and configure the content engine before enabling automatic publishing.</p></div>
           </section>
 
+          {active === "Reel studio" ? (
+            <ReelStudio onSave={saveReelDraft} />
+          ) : (
+            <>
           <section className="stats-grid">
             <Stat icon={Film} label="Reels today" value="1" detail="Daily target" />
             <Stat icon={Image} label="Stories today" value="3" detail="Daily target" />
@@ -124,9 +136,84 @@ export default function App() {
             </div>
           </section>
           <footer>ReelPilot AI <span>·</span> Built for responsible finance education <span>·</span> Demo data only</footer>
+            </>
+          )}
         </div>
       </main>
     </div>
+  );
+}
+
+
+function ReelStudio({ onSave }) {
+  const [topic, setTopic] = useState("");
+  const [format, setFormat] = useState("Explainer");
+  const [duration, setDuration] = useState("30 seconds");
+  const [script, setScript] = useState("");
+  const [caption, setCaption] = useState("");
+  const [error, setError] = useState("");
+
+  const generateDraft = () => {
+    const cleanTopic = topic.trim();
+    if (cleanTopic.length < 4) {
+      setError("Please enter a topic with at least 4 characters.");
+      return;
+    }
+    setError("");
+    const opening = format === "Myth vs fact"
+      ? `Kya aapko lagta hai ki ${cleanTopic} ke baare mein jo popular baat kahi jaati hai, woh hamesha sahi hoti hai? Zaroori nahi.`
+      : format === "Explainer"
+      ? `Aaj simple language mein samajhte hain: ${cleanTopic}.`
+      : `Agar aap ${cleanTopic} ko lekar confused hain, ye 3 baatein samajh lijiye.`;
+    const body = duration === "60 seconds"
+      ? `\n\nPoint 1: Is topic ka basic meaning samjhein.\nPoint 2: Iska practical impact apni situation par check karein.\nPoint 3: Kisi bhi decision se pehle applicable rules, dates aur official source verify karein.\n\nExample: Ek real-life example lekar calculation ya process ko step-by-step samjhein.`
+      : `\n\nPehli baat: iska basic meaning samjhein.\nDoosri baat: apni situation par iska impact check karein.\nTeesri baat: decision lene se pehle current rules aur official source verify karein.`;
+    const ending = "\n\nSave this Reel for revision, aur aise finance explainers ke liye follow karein.";
+    setScript(`[HOOK]\n${opening}\n\n[EXPLANATION]${body}\n\n[CTA]${ending}`);
+    setCaption(`${cleanTopic}: simple explanation in Hinglish. Rules and applicability can change, so verify the latest official guidance before acting.\n\n#FinanceEducation #India #TaxAwareness #Accounting #PersonalFinance`);
+  };
+
+  return (
+    <section className="studio-layout">
+      <div className="panel studio-form">
+        <div className="panel-heading">
+          <div><h2><Clapperboard size={18} /> Reel brief</h2><p>Build a structured script draft for a faceless Reel.</p></div>
+          <span className="progress-count">DRAFT MODE</span>
+        </div>
+        <label className="field-label" htmlFor="reel-topic">What is the Reel about?</label>
+        <textarea id="reel-topic" className="studio-input topic-input" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. New tax regime vs old tax regime" rows={3} />
+        <div className="studio-fields">
+          <div>
+            <label className="field-label" htmlFor="reel-format">Content format</label>
+            <select id="reel-format" className="studio-input" value={format} onChange={(e) => setFormat(e.target.value)}>
+              <option>Explainer</option><option>Myth vs fact</option><option>3 quick points</option>
+            </select>
+          </div>
+          <div>
+            <label className="field-label" htmlFor="reel-duration">Target duration</label>
+            <select id="reel-duration" className="studio-input" value={duration} onChange={(e) => setDuration(e.target.value)}>
+              <option>30 seconds</option><option>60 seconds</option>
+            </select>
+          </div>
+        </div>
+        {error && <p className="studio-error">{error}</p>}
+        <button className="primary-btn studio-generate" onClick={generateDraft}><Sparkles size={17}/> Create script draft</button>
+        <p className="studio-disclaimer">This is a template-based draft, not AI-generated or tax-verified content. Verify every legal, tax and financial claim against current official sources before publishing.</p>
+      </div>
+      <div className="panel studio-output">
+        <div className="panel-heading"><div><h2><FileText size={18}/> Script preview</h2><p>Hook · Explanation · Call to action</p></div></div>
+        {script ? (
+          <>
+            <pre className="script-preview">{script}</pre>
+            <label className="field-label">Caption and hashtags</label>
+            <textarea className="studio-input caption-input" value={caption} onChange={(e) => setCaption(e.target.value)} rows={5} />
+            <button className="secondary-btn" onClick={() => onSave(topic.trim())}>Save as Reel draft</button>
+          </>
+        ) : (
+          <div className="studio-empty"><div className="engine-icon"><Film size={20}/></div><strong>Your script will appear here</strong><p>Enter a topic and create a draft to preview its structure.</p></div>
+        )}
+      </div>
+    </section>
   );
 }
 
