@@ -169,3 +169,185 @@ async def generate_reel(request: ReelRequest) -> ReelResponse:
         model=GEMINI_MODEL,
         verified=False,
     )
+
+
+class FactCheckRequest(BaseModel):
+    script: str = Field(min_length=20, max_length=5000)
+
+
+class FactCheckClaim(BaseModel):
+    claim: str
+    assessment: Literal["supported", "contradicted", "unclear"] = "unclear"
+    explanation: str
+
+
+class FactCheckSource(BaseModel):
+    title: str
+    url: str
+    domain: str
+    source_type: Literal["official", "other"] = "other"
+
+
+class FactCheckResponse(BaseModel):
+    review_status: Literal["review_required"] = "review_required"
+    grounded: bool
+    summary: str
+    claims: list[FactCheckClaim]
+    sources: list[FactCheckSource]
+    search_queries: list[str]
+    checked_at: str
+
+
+@app.post("/api/fact-check", response_model=FactCheckResponse)
+async def fact_check_script(request: FactCheckRequest) -> FactCheckResponse:
+    """Run an AI-assisted, Google-Search-grounded check; never auto-approve content."""
+    if not GEMINI_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Gemini API is not configured on the backend yet.",
+        )
+
+    system_instruction = (
+        "You are a cautious fact-checking assistant for Indian finance, accounting, "
+        "banking and taxation education. Examine each factual claim in the supplied "
+        "script. Prioritise primary/official sources: RBI (rbi.org.in), Income Tax "
+        "Department (incometax.gov.in), GST portal (gst.gov.in), CBIC (cbic.gov.in), "
+        "SEBI (sebi.gov.in), MCA (mca.gov.in), Gazette of India (egazette.gov.in), "
+        "and official bank/card issuer documents for issuer-specific terms. "
+        "Do not treat blogs, SEO pages, social posts or other AI answers as authoritative. "
+        "For every claim return assessment supported, contradicted, or unclear and a "
+        "short explanation. A search result snippet alone is not conclusive evidence. "
+        "If the effective date, jurisdiction, issuer or applicable conditions are missing, "
+        "mark unclear. Never invent a source, URL, law, section, rate or date. "
+        "Return only valid JSON with keys summary and claims; claims must be an array "
+        "of objects with claim, assessment, explanation."
+    )
+    user_prompt = (
+        "Fact-check this draft for an Indian audience. Identify each distinct factual "
+        "claim, including numeric rates, deadlines, legal/tax statements and cause-effect "
+        "claims. Search for current supporting or contradicting evidence. "
+        "Do not rewrite the script. If evidence is incomplete, say so.\n\n"
+        f"DRAFT:\n{request.script}"
+    )
+    payload = {
+        "systemInstruction": {"parts": [{"text": system_instruction}]},
+        "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+        "tools": [{"google_search": {}}],
+        "generationConfig": {
+            "temperature": 1.0,
+            "maxOutputTokens": 2200,
+        },
+    }
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/"
+        f"models/{GEMINI_MODEL}:generateContent"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                url,
+                headers={
+                    "x-goog-api-key": GEMINI_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="Fact-check search timed out. Try again.") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Could not reach Gemini fact-check search.") from exc
+
+    if response.status_code == 429:
+        raise HTTPException(
+            status_code=429,
+            detail="Gemini search quota or rate limit reached. Wait and try again.",
+        )
+    if response.status_code in (401, 403):
+        raise HTTPException(
+            status_code=502,
+            detail="Gemini rejected the backend API key or search access.",
+        )
+    if response.is_error:
+        try:
+            upstream_error = response.json().get("error", {}).get("message", "")
+        except (ValueError, AttributeError):
+            upstream_error = ""
+        detail = f"Gemini fact-check error (HTTP {response.status_code})."
+        if upstream_error:
+            detail = f"{detail} {str(upstream_error).replace(chr(10), ' ')[:220]}"
+        raise HTTPException(status_code=502, detail=detail)
+
+    try:
+        import json
+        from datetime import datetime, timezone
+        from urllib.parse import urlparse
+
+        data = response.json()
+        candidate = data["candidates"][0]
+        parts = candidate["content"]["parts"]
+        raw_text = next(part["text"] for part in parts if "text" in part)
+        cleaned = raw_text.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        result = json.loads(cleaned)
+        claims = [
+            FactCheckClaim(
+                claim=str(item.get("claim", "")).strip(),
+                assessment=(
+                    item.get("assessment")
+                    if item.get("assessment") in {"supported", "contradicted", "unclear"}
+                    else "unclear"
+                ),
+                explanation=str(item.get("explanation", "")).strip(),
+            )
+            for item in result.get("claims", [])
+            if str(item.get("claim", "")).strip()
+        ][:30]
+
+        metadata = candidate.get("groundingMetadata", {})
+        sources = []
+        official_domains = {
+            "rbi.org.in", "incometax.gov.in", "gst.gov.in", "cbic.gov.in",
+            "sebi.gov.in", "mca.gov.in", "egazette.gov.in",
+        }
+        for chunk in metadata.get("groundingChunks", []):
+            web_source = chunk.get("web", {})
+            source_url = str(web_source.get("uri", "")).strip()
+            if not source_url:
+                continue
+            host = urlparse(source_url).hostname or ""
+            domain = host.lower().removeprefix("www.")
+            is_official = any(
+                domain == official or domain.endswith("." + official)
+                for official in official_domains
+            )
+            sources.append(
+                FactCheckSource(
+                    title=str(web_source.get("title", domain or "Source")),
+                    url=source_url,
+                    domain=domain or "unknown",
+                    source_type="official" if is_official else "other",
+                )
+            )
+        unique_sources = []
+        seen_urls = set()
+        for source in sources:
+            if source.url not in seen_urls:
+                unique_sources.append(source)
+                seen_urls.add(source.url)
+
+        return FactCheckResponse(
+            grounded=bool(unique_sources),
+            summary=str(result.get("summary", "Review each claim against its cited source.")),
+            claims=claims,
+            sources=unique_sources[:12],
+            search_queries=[
+                str(query) for query in metadata.get("webSearchQueries", [])[:8]
+            ],
+            checked_at=datetime.now(timezone.utc).isoformat(),
+        )
+    except (KeyError, IndexError, StopIteration, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Gemini returned an unreadable fact-check result. Please retry.",
+        ) from exc
