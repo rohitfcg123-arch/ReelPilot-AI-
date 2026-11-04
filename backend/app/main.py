@@ -399,8 +399,8 @@ class RenderReelRequest(BaseModel):
 class RenderReelResponse(BaseModel):
     video_base64: str
     mime_type: str = "video/mp4"
-    width: int = 1080
-    height: int = 1920
+    width: int = 720
+    height: int = 1280
     provider: str = "ReelPilot renderer"
 
 
