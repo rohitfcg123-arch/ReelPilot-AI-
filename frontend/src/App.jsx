@@ -161,7 +161,7 @@ function ReelStudio({ onSave }) {
       setError("Generate a script before checking its facts.");
       return;
     }
-    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\\/$/, "");
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
     if (!apiBase) {
       setError("AI backend is not connected. Configure VITE_API_BASE_URL first.");
       return;
