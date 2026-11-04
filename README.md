@@ -35,6 +35,12 @@ Reel Studio can generate a Hindi voiceover using Sarvam Bulbul v3. Add `SARVAM_A
 
 The backend calls Sarvam's `/text-to-speech` REST API and returns MP3 audio for in-browser preview and download. The current default voice is `shubh` with Hindi language mode; Bulbul v3 supports code-mixed English/Indic text. Requests are limited to 2,500 characters. New verified accounts receive ₹100 in one-time credits according to Sarvam's current pricing documentation; this is not unlimited free usage. Check current credit balance and terms in the Sarvam dashboard.
 
+## MP4 Reel rendering
+
+After generating a Sarvam voiceover, Reel Studio can call `POST /api/render-reel` to create a vertical 1080×1920 MP4 with the voiceover and branded finance text-scene cards. The renderer uses Pillow and the bundled FFmpeg binary from `imageio-ffmpeg`; no paid stock footage is required. The browser can preview and download the MP4.
+
+This first renderer creates simple motion-card scenes from the script and divides the narration duration evenly across them. It does **not** yet provide word-level subtitle timing, stock footage, AI-generated images, or Instagram publishing. The Render free service has CPU/memory limits, so long videos may time out; start with short 30-second drafts.
+
 ## Reel generation and verification
 
 The Reel Studio calls `POST /api/generate-reel`. The response contains script, caption, hashtags, model, provider, and `verified: false`.
@@ -65,6 +71,6 @@ The frontend and backend must both be running locally, and `VITE_API_BASE_URL` m
 
 ## Not implemented yet
 
-Full video rendering and Instagram publishing are not enabled yet. The current voiceover can be previewed/downloaded as a separate MP3; it is not yet merged into a rendered Reel. Instagram publishing is not enabled until Meta credentials, permissions, account configuration, and server-side publishing code are completed and tested. Dashboard records remain demo/in-memory data.
+Instagram publishing is not enabled until Meta credentials, permissions, account configuration, and server-side publishing code are completed and tested. Dashboard records remain demo/in-memory data.
 
 Never commit API keys, access tokens, passwords, or service-account files.
