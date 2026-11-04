@@ -339,7 +339,7 @@ async def generate_voiceover(request: VoiceoverRequest) -> VoiceoverResponse:
 
     payload = {
         "text": request.text,
-        "target_language_code": request.language_code,
+        "language_code": request.language_code,
         "speaker": request.speaker,
         "model": "bulbul:v3",
         "pace": 1.0,
